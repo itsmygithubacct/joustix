@@ -9,7 +9,7 @@ DESTDIR ?=
 SRC = src/main.c src/game.c src/render.c src/term.c src/sound.c
 OBJ = $(SRC:.c=.o)
 BIN = joustix
-ASSET_FILES = assets/stage.ppm assets/player.ppm assets/bounder.ppm \
+ASSET_FILES = assets/stage.ppm assets/gameover.ppm assets/player.ppm assets/bounder.ppm \
 	assets/hunter.ppm assets/shadow.ppm assets/props.ppm assets/platform.ppm
 ASSET_DEST = $(DESTDIR)$(PREFIX)/share/joustix/assets
 
@@ -34,8 +34,8 @@ test: $(BIN) validate-assets
 
 validate-assets: $(ASSET_FILES)
 	@set -eu; \
-	[ "$$(find assets -maxdepth 1 -type f | wc -l)" -eq 7 ] || \
-		{ echo "assets/ must contain only the seven production images" >&2; exit 1; }; \
+	[ "$$(find assets -maxdepth 1 -type f | wc -l)" -eq 8 ] || \
+		{ echo "assets/ must contain only the eight production images" >&2; exit 1; }; \
 	check_ppm() { \
 		file=$$1; width=$$2; height=$$3; \
 		test -f "$$file" || { echo "missing production image: $$file" >&2; return 1; }; \
@@ -50,6 +50,7 @@ validate-assets: $(ASSET_FILES)
 			{ echo "invalid PPM payload: $$file ($$actual, expected $$expected)" >&2; return 1; }; \
 	}; \
 	check_ppm assets/stage.ppm 640 360; \
+	check_ppm assets/gameover.ppm 640 360; \
 	for image in player bounder hunter shadow; do check_ppm "assets/$$image.ppm" 512 768; done; \
 	check_ppm assets/props.ppm 512 512; \
 	check_ppm assets/platform.ppm 640 128

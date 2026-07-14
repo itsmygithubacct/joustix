@@ -22,6 +22,7 @@ endorser of Joustix.
 | `assets/props.ppm` | Intact/cracked eggs and two lava-troll poses | Selected, point-resized, chroma-key normalized |
 | `assets/platform.ppm` | Modular basalt-and-bronze ledge | Selected, cropped, padded, point-resized |
 | `assets/stage.ppm` | Moonlit volcanic cavern arena | Selected, gameplay-aligned crop, point-resized |
+| `assets/gameover.ppm` | Fallen helmet and broken lance defeat scene | Selected, point-resized |
 
 The generation briefs required original retro pixel art and prohibited copied
 game sprites, screenshots, logos, recognizable copyrighted characters,
@@ -34,7 +35,7 @@ four-step ground run, followed by glide, wing-up, wing-down, and dive poses.
 
 ## Runtime inventory policy
 
-Only the seven production PPMs above belong in the release repository. No
+Only the eight production PPMs above belong in the release repository. No
 generator scripts, prompt logs, unused variants, preview PNGs, converted
 references, or other image-pipeline artifacts are required to build or run the
 game.
