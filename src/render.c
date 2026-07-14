@@ -398,7 +398,7 @@ static void draw_particles(void)
 
 static void draw_hud(void)
 {
-    rect_l(0, 0, LOGICAL_W, 14, 0x050814, .94f);
+    rect_l(0, 0, LOGICAL_W, 14, 0x050814, .64f);
     line_l(0, 14, 320, 14, .45f, 0x59657e, .75f);
     char b[64];
     snprintf(b, sizeof b, "SCORE %06d", G.score);
@@ -470,14 +470,20 @@ static void draw_overlay(void)
         text_center_l(160, 98, "P OR ESC TO RESUME", 0xcbd5e1, 1, .62f);
     } else if (G.state == GS_GAMEOVER) {
         rect_l(0, 0, 320, 180, 0x280506, .18f);
-        panel(74, 42, 172, 72);
-        text_center_l(160, 51, "GAME OVER", 0xff625b, 1, 1.55f);
+        panel(74, 33, 172, 114);
+        text_center_l(160, 42, "GAME OVER", 0xff625b, 1, 1.55f);
         char b[64];
         snprintf(b, sizeof b, "SCORE %06d", G.score);
-        text_center_l(160, 77, b, 0xf8fafc, 1, .64f);
+        text_center_l(160, 68, b, 0xf8fafc, 1, .64f);
         snprintf(b, sizeof b, "BEST  %06d", G.high_score);
-        text_center_l(160, 89, b, 0xcbd5e1, 1, .60f);
-        text_center_l(160, 103, "ENTER TO RIDE AGAIN", 0xffdd67, 1, .70f);
+        text_center_l(160, 80, b, 0xcbd5e1, 1, .60f);
+        bool restart = G.gameover_choice == GAMEOVER_RESTART;
+        text_center_l(160, 99, restart ? "> RIDE AGAIN <" : "RIDE AGAIN",
+                      restart ? 0xffdd67 : 0x94a3b8, 1, .70f);
+        text_center_l(160, 114, restart ? "MAIN MENU" : "> MAIN MENU <",
+                      restart ? 0x94a3b8 : 0xffdd67, 1, .70f);
+        text_center_l(160, 135, "ARROWS CHOOSE   ENTER SELECT",
+                      0x94a3b8, 1, .46f);
     }
 }
 

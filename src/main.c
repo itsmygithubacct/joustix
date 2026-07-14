@@ -172,6 +172,10 @@ static int rules_test(void)
     game_init(960, 540, 123);
     G.headless = true;
     game_start();
+    EXPECT(G.wave == 1 && G.player.active && G.player.on_platform &&
+           G.player.x < 42 && G.player.dir == 1 &&
+           G.platforms[0].w < 40 && G.platforms[1].w < 40,
+           "first wave starts player one on the compact left pad");
 
     memset(G.enemies, 0, sizeof G.enemies);
     memset(G.eggs, 0, sizeof G.eggs);
@@ -221,6 +225,10 @@ static int rules_test(void)
     game_tick();
     EXPECT(!G.player.active && G.lives == 2,
            "higher enemy costs exactly one life before respawn");
+    for (int i = 0; i < 64; i++) game_tick();
+    EXPECT(G.player.active && G.player.on_platform && G.player.x < 42 &&
+           G.player.dir == 1,
+           "player one respawns on the left pad after losing a life");
 
     memset(G.enemies, 0, sizeof G.enemies);
     memset(G.eggs, 0, sizeof G.eggs);
@@ -231,6 +239,11 @@ static int rules_test(void)
     game_tick();
     EXPECT(G.state == GS_WAVE && bonus == 1100 && G.score == bonus,
            "empty battlefield awards one wave bonus and enters intermission");
+    G.wave_timer = 0;
+    game_tick();
+    EXPECT(G.state == GS_PLAYING && G.wave == 2 && G.player.active &&
+           G.player.on_platform && G.player.x < 42 && G.player.dir == 1,
+           "every new wave resets player one on the left pad");
 
     memset(G.enemies, 0, sizeof G.enemies);
     memset(G.eggs, 0, sizeof G.eggs);
@@ -263,6 +276,22 @@ static int rules_test(void)
     game_tick();
     EXPECT(G.state == GS_GAMEOVER && G.lives == 0 && !G.player.active,
            "losing the final life enters the dedicated game-over state");
+    game_handle_key(' ');
+    game_handle_key('r');
+    EXPECT(G.state == GS_GAMEOVER,
+           "game over ignores restart shortcuts and waits for Enter");
+    game_handle_key(KEY_ENTER);
+    EXPECT(G.state == GS_PLAYING && G.wave == 1 && G.lives == 3,
+           "Enter confirms the default ride-again option");
+    G.state = GS_GAMEOVER;
+    G.gameover_choice = GAMEOVER_RESTART;
+    game_handle_key(KEY_DOWN);
+    game_handle_key(' ');
+    EXPECT(G.state == GS_GAMEOVER && G.gameover_choice == GAMEOVER_MENU,
+           "direction keys select main menu without leaving game over");
+    game_handle_key(KEY_ENTER);
+    EXPECT(G.state == GS_TITLE,
+           "Enter confirms main menu and returns to the title screen");
 
     char error[160];
     EXPECT(game_validate(error, sizeof error), "game invariants hold after rule fixtures");
