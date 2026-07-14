@@ -132,6 +132,26 @@ static void make_step(void)
     free(s);
 }
 
+static void make_land(void)
+{
+    const float duration = .17f;
+    int n = (int)(duration * SAMPLE_RATE);
+    float *s = calloc((size_t)n, sizeof *s);
+    if (!s) return;
+    float phase = 0, grit = 0;
+    for (int i = 0; i < n; i++) {
+        float t = (float)i / SAMPLE_RATE, u = t / duration;
+        float noise = noise_sample();
+        grit += .10f * (noise - grit);
+        phase += 6.2831853f * (112.0f - 48.0f * u) / SAMPLE_RATE;
+        float thump = (sinf(phase) + .22f * triangle_wave(phase * .5f)) *
+                      expf(-t / .052f);
+        s[i] = thump * .86f + grit * .48f * expf(-t / .038f);
+    }
+    bake(SFX_LAND, s, n, .32f);
+    free(s);
+}
+
 static void make_joust(void)
 {
     static const float frequencies[] = { 1493, 2210, 2967, 3743, 4638, 5512 };
@@ -260,6 +280,7 @@ static void synthesize(void)
     make_menu();
     make_flap();
     make_step();
+    make_land();
     make_joust();
     make_hurt();
     make_egg();

@@ -457,6 +457,9 @@ static void draw_title(void)
     text_center_l(160, 80, "DIFFICULTY", 0x94a3b8, 1, .62f);
     static const char *names[] = { "< SQUIRE >", "< KNIGHT >", "< BLACK KNIGHT >" };
     text_center_l(160, 91, names[G.difficulty], 0xf8fafc, 1, .84f);
+    char best[32];
+    snprintf(best, sizeof best, "BEST %06d", G.high_score);
+    text_center_l(160, 104, best, 0x94a3b8, 1, .50f);
     float blink = .55f + .45f * sinf(G.scene_time * 3.5f);
     text_center_l(160, 119, "PRESS ENTER TO RIDE", 0xffe888, blink, .78f);
     text_center_l(160, 133, "LEFT RIGHT CHOOSE   M SOUND   Q QUIT", 0x94a3b8, .9f, .51f);

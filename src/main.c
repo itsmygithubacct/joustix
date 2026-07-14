@@ -239,10 +239,19 @@ static int rules_test(void)
     game_tick();
     EXPECT(G.state == GS_WAVE && bonus == 1100 && G.score == bonus,
            "empty battlefield awards one wave bonus and enters intermission");
+    int intermission_lives = G.lives;
+    G.player.x = 100; G.player.y = 152; G.player.invuln = 0;
+    G.lava_troll_x = 109;
+    G.lava_troll_phase = 1.2f;
+    game_tick();
+    EXPECT(G.state == GS_WAVE && G.player.active && G.lives == intermission_lives &&
+           G.lava_troll_phase == 1.2f,
+           "wave intermission freezes hazards while player controls are frozen");
     G.wave_timer = 0;
     game_tick();
     EXPECT(G.state == GS_PLAYING && G.wave == 2 && G.player.active &&
-           G.player.on_platform && G.player.x < 42 && G.player.dir == 1,
+           G.player.on_platform && G.player.x < 42 && G.player.dir == 1 &&
+           G.lava_troll_phase == 0 && G.lava_troll_timer >= 4.0f,
            "every new wave resets player one on the left pad");
 
     memset(G.enemies, 0, sizeof G.enemies);
@@ -260,6 +269,27 @@ static int rules_test(void)
     for (int i = 0; i < 14; i++) game_tick();
     EXPECT(G.player.x > 106.5f && G.player.vx > 50.0f,
            "directional tap produces decisive forward momentum");
+    game_handle_key(KEY_LEFT);
+    EXPECT(G.player.dir == -1 && G.left_input > 0 && G.right_input == 0,
+           "opposite direction input reverses immediately");
+
+    memset(G.enemies, 0, sizeof G.enemies);
+    memset(G.eggs, 0, sizeof G.eggs);
+    memset(G.particles, 0, sizeof G.particles);
+    G.state = GS_PLAYING;
+    G.left_input = G.right_input = 0;
+    G.player = (Rider){ .x = 130, .y = 85.5f, .prev_y = 85.5f, .vy = 35,
+                        .dir = 1, .active = true, .invuln = 10 };
+    G.enemies[0] = (Enemy){
+        .rider = { .x = 250, .y = 30, .prev_y = 30, .active = true,
+                   .spawn_timer = 99 },
+        .type = EN_BOUNDER,
+    };
+    game_tick();
+    int landing_particles = 0;
+    for (int i = 0; i < MAX_PARTICLES; i++) landing_particles += G.particles[i].active;
+    EXPECT(G.player.on_platform && landing_particles >= 5,
+           "a firm landing produces visible dust feedback");
 
     memset(G.enemies, 0, sizeof G.enemies);
     memset(G.eggs, 0, sizeof G.eggs);
@@ -397,7 +427,7 @@ static int sound_test(void)
         sound_shutdown();
         return 0;
     }
-    puts("sound-test: menu, flap, step, joust, hurt, egg, hatch, wave, lava");
+    puts("sound-test: menu, flap, step, land, joust, hurt, egg, hatch, wave, lava");
     for (int i = 0; i < SFX_COUNT; i++) {
         sound_play(i, .8f, 1);
         sleep_ms(i == SFX_WAVE ? 1000 : 550);

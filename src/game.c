@@ -72,6 +72,18 @@ static void burst(float x, float y, uint32_t color, int count, float speed)
     }
 }
 
+static void landing_dust(float x, float y, float impact)
+{
+    int count = impact > 46.0f ? 8 : 5;
+    for (int i = 0; i < count; i++) {
+        float side = i & 1 ? 1.0f : -1.0f;
+        particle(x + side * (1.5f + i * .35f), y,
+                 side * (7.0f + i * 1.6f),
+                 -4.0f - (i % 3) * 2.2f,
+                 .22f + (i % 4) * .035f, 0xc9a66b);
+    }
+}
+
 static void spawn_player_at(int platform_index)
 {
     Platform *p = &G.platforms[platform_index];
@@ -161,6 +173,9 @@ static void begin_wave(void)
     G.wave++;
     /* Player 1 owns the left pad; the matching right pad is reserved for P2. */
     spawn_player_at(0);
+    /* Never carry an active troll attack across a wave boundary. */
+    G.lava_troll_phase = 0;
+    G.lava_troll_timer = fmaxf(G.lava_troll_timer, 4.0f);
     int counts[EN_TYPE_COUNT];
     if (G.wave <= 5) {
         memcpy(counts, waves[G.wave - 1], sizeof counts);
@@ -345,7 +360,15 @@ static void update_player(void)
         else p->vx = fminf(0, p->vx + drag);
     }
     p->vx = clampf(p->vx, -PLAYER_MAX_SPEED, PLAYER_MAX_SPEED);
+    bool was_on_platform = p->on_platform;
+    float landing_speed = p->vy;
     bool hit_lava = update_rider_physics(p);
+    if (!was_on_platform && p->on_platform && landing_speed > 16.0f) {
+        landing_dust(p->x + RIDER_W * .5f, p->y + RIDER_H, landing_speed);
+        sound_play(SFX_LAND, clampf(.20f + landing_speed * .004f, .26f, .48f),
+                   clampf(1.08f - landing_speed * .003f, .82f, 1.02f));
+        if (landing_speed > 52.0f) G.shake = fmaxf(G.shake, .035f);
+    }
     if (p->spawn_timer <= 0 && p->on_platform && fabsf(p->vx) > 12.0f) {
         G.step_sound_timer -= TICK_DT;
         if (G.step_sound_timer <= 0) {
@@ -527,11 +550,11 @@ void game_tick(void)
     update_particles();
     if (G.state == GS_TITLE || G.state == GS_PAUSED || G.state == GS_GAMEOVER)
         return;
-    update_lava_troll();
     if (G.state == GS_WAVE) {
         if ((G.wave_timer -= TICK_DT) <= 0) begin_wave();
         return;
     }
+    update_lava_troll();
     update_player();
     for (int i = 0; i < MAX_ENEMIES; i++) update_enemy(&G.enemies[i]);
     check_jousts();
@@ -609,9 +632,11 @@ void game_handle_key(int key)
     if (G.state != GS_PLAYING) return;
     if (key == KEY_LEFT || key == 'a' || key == 'A') {
         G.left_input = DIRECTION_LATCH;
+        G.right_input = 0;
         G.player.dir = -1;
     } else if (key == KEY_RIGHT || key == 'd' || key == 'D') {
         G.right_input = DIRECTION_LATCH;
+        G.left_input = 0;
         G.player.dir = 1;
     } else if (key == KEY_UP || key == 'w' || key == 'W' || key == ' ') {
         if (G.player.flap_cooldown <= 0 && G.player.spawn_timer <= 0) {
