@@ -248,6 +248,22 @@ static int rules_test(void)
     EXPECT(G.player.x > 106.5f && G.player.vx > 50.0f,
            "directional tap produces decisive forward momentum");
 
+    memset(G.enemies, 0, sizeof G.enemies);
+    memset(G.eggs, 0, sizeof G.eggs);
+    G.state = GS_PLAYING;
+    G.lives = 1;
+    G.player = (Rider){ .x = 100, .y = 58, .prev_y = 58,
+                        .dir = 1, .active = true };
+    G.enemies[0] = (Enemy){
+        .rider = { .x = 100, .y = 51, .prev_y = 51,
+                   .dir = -1, .active = true },
+        .type = EN_HUNTER, .flap_timer = 99,
+    };
+    game_tick();
+    game_tick();
+    EXPECT(G.state == GS_GAMEOVER && G.lives == 0 && !G.player.active,
+           "losing the final life enters the dedicated game-over state");
+
     char error[160];
     EXPECT(game_validate(error, sizeof error), "game invariants hold after rule fixtures");
     printf("rules-test: %s\n", failures ? "FAILED" : "all checks passed");

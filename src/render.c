@@ -10,7 +10,7 @@ static uint8_t *fb;
 static int W, H;
 static float scale_px, origin_x, origin_y, shake_x, shake_y;
 static int clip_x0, clip_y0, clip_x1, clip_y1;
-static Bitmap stage_img, rider_img[4], props_img, platform_img;
+static Bitmap stage_img, gameover_img, rider_img[4], props_img, platform_img;
 
 typedef struct { int x, y, w, h; bool ok; } SpriteBounds;
 enum { RIDER_ATLAS_COLS = 2, RIDER_ATLAS_ROWS = 4, RIDER_POSES = 8 };
@@ -258,17 +258,17 @@ static void cache_sprite_bounds(void)
     platform_bounds = find_bounds(&platform_img, 1, 1, 0, 0);
 }
 
-static void draw_background(void)
+static void draw_background(const Bitmap *image)
 {
-    if (!stage_img.ok) return;
+    if (!image->ok) return;
     int x0 = (int)sx(0), y0 = (int)sy(0);
     int width = (int)ceilf(LOGICAL_W * scale_px);
     int height = (int)ceilf(LOGICAL_H * scale_px);
     for (int dy = 0; dy < height; dy++) {
-        int source_y = dy * stage_img.h / height;
+        int source_y = dy * image->h / height;
         for (int dx = 0; dx < width; dx++) {
-            int source_x = dx * stage_img.w / width;
-            px_set(x0 + dx, y0 + dy, stage_img.px[source_y * stage_img.w + source_x]);
+            int source_x = dx * image->w / width;
+            px_set(x0 + dx, y0 + dy, image->px[source_y * image->w + source_x]);
         }
     }
 }
@@ -398,7 +398,7 @@ static void draw_particles(void)
 
 static void draw_hud(void)
 {
-    rect_l(0, 0, LOGICAL_W, 14, 0x050814, .78f);
+    rect_l(0, 0, LOGICAL_W, 14, 0x050814, .94f);
     line_l(0, 14, 320, 14, .45f, 0x59657e, .75f);
     char b[64];
     snprintf(b, sizeof b, "SCORE %06d", G.score);
@@ -469,13 +469,15 @@ static void draw_overlay(void)
         text_center_l(160, 75, "PAUSED", 0xffdb58, 1, 1.45f);
         text_center_l(160, 98, "P OR ESC TO RESUME", 0xcbd5e1, 1, .62f);
     } else if (G.state == GS_GAMEOVER) {
-        rect_l(0, 0, 320, 180, 0x280506, .28f);
-        panel(70, 55, 180, 72);
-        text_center_l(160, 65, "GAME OVER", 0xff625b, 1, 1.55f);
+        rect_l(0, 0, 320, 180, 0x280506, .18f);
+        panel(74, 42, 172, 72);
+        text_center_l(160, 51, "GAME OVER", 0xff625b, 1, 1.55f);
         char b[64];
-        snprintf(b, sizeof b, "SCORE %06d   BEST %06d", G.score, G.high_score);
-        text_center_l(160, 91, b, 0xf8fafc, 1, .64f);
-        text_center_l(160, 109, "ENTER TO RIDE AGAIN", 0xffdd67, 1, .70f);
+        snprintf(b, sizeof b, "SCORE %06d", G.score);
+        text_center_l(160, 77, b, 0xf8fafc, 1, .64f);
+        snprintf(b, sizeof b, "BEST  %06d", G.high_score);
+        text_center_l(160, 89, b, 0xcbd5e1, 1, .60f);
+        text_center_l(160, 103, "ENTER TO RIDE AGAIN", 0xffdd67, 1, .70f);
     }
 }
 
@@ -484,6 +486,7 @@ void render_init(int w, int h)
     fb = NULL;
     W = H = 0;
     stage_img = load_ppm(asset_path("stage.ppm"));
+    gameover_img = load_ppm(asset_path("gameover.ppm"));
     rider_img[0] = load_ppm(asset_path("player.ppm"));
     rider_img[1] = load_ppm(asset_path("bounder.ppm"));
     rider_img[2] = load_ppm(asset_path("hunter.ppm"));
@@ -512,6 +515,7 @@ void render_resize(int w, int h)
 void render_shutdown(void)
 {
     free_bitmap(&stage_img);
+    free_bitmap(&gameover_img);
     for (int i = 0; i < 4; i++) free_bitmap(&rider_img[i]);
     free_bitmap(&props_img);
     free_bitmap(&platform_img);
@@ -536,6 +540,7 @@ static bool expect_bitmap(const Bitmap *image, const char *name, int width, int 
 bool render_validate_assets(char *error, size_t error_len)
 {
     if (!expect_bitmap(&stage_img, "stage.ppm", 640, 360, error, error_len) ||
+        !expect_bitmap(&gameover_img, "gameover.ppm", 640, 360, error, error_len) ||
         !expect_bitmap(&rider_img[0], "player.ppm", 512, 768, error, error_len) ||
         !expect_bitmap(&rider_img[1], "bounder.ppm", 512, 768, error, error_len) ||
         !expect_bitmap(&rider_img[2], "hunter.ppm", 512, 768, error, error_len) ||
@@ -578,9 +583,14 @@ void render_frame(void)
         shake_x = sinf(G.ticks * 2.17f) * strength * scale_px;
         shake_y = cosf(G.ticks * 1.61f) * strength * .55f * scale_px;
     } else shake_x = shake_y = 0;
-    draw_background();
-    if (G.state == GS_TITLE) draw_title();
-    else { draw_game_scene(); draw_overlay(); }
+    if (G.state == GS_GAMEOVER) {
+        draw_background(&gameover_img);
+        draw_overlay();
+    } else {
+        draw_background(&stage_img);
+        if (G.state == GS_TITLE) draw_title();
+        else { draw_game_scene(); draw_overlay(); }
+    }
     if (G.flash > 0) rect_l(0, 0, 320, 180, 0xffd27a, G.flash * 1.8f);
 }
 

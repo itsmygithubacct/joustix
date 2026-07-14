@@ -9,6 +9,8 @@ Ride your ostrich above enemy buzzard riders, collide from the higher position,
 and collect the eggs they drop before they hatch. Clear increasingly difficult
 waves while avoiding the lava below.
 
+![Joustix gameplay](docs/screenshots/joustix-gameplay.png)
+
 ## Features
 
 - Responsive acceleration, forgiving momentum, flapping, landing, underside
@@ -17,7 +19,8 @@ waves while avoiding the lava below.
 - Height-based jousts, tie rebounds, eggs, hatching, lives, scoring, and waves
 - Original generated 16-bit sprite sheets for every rider class, including
   four-frame ground runs plus glide/flap/dive poses, as well as eggs, the lava
-  troll, modular platforms, and a moonlit volcanic stage
+  troll, modular platforms, a moonlit volcanic stage, and a dedicated defeat
+  scene
 - Animated lava accents, particles, spawn effects, and screen shake
 - Layered procedural arcade sound streamed to `pacat`, `pw-play`, `aplay`, or
   SoX `play`
