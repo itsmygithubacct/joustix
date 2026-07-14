@@ -22,6 +22,7 @@ enum {
 
 enum { GS_TITLE, GS_PLAYING, GS_WAVE, GS_PAUSED, GS_GAMEOVER };
 enum { EN_BOUNDER, EN_HUNTER, EN_SHADOW, EN_TYPE_COUNT };
+enum { GAMEOVER_RESTART, GAMEOVER_MENU, GAMEOVER_OPTION_COUNT };
 enum {
     SFX_MENU, SFX_FLAP, SFX_STEP, SFX_JOUST, SFX_HURT, SFX_EGG,
     SFX_HATCH, SFX_WAVE, SFX_LAVA, SFX_COUNT
@@ -78,7 +79,7 @@ typedef struct {
     Platform platforms[PLATFORM_COUNT];
 
     int wave, score, high_score, lives;
-    int difficulty;
+    int difficulty, gameover_choice;
     float wave_timer, respawn_timer, left_input, right_input;
     float shake, flash, message_timer, lava_troll_timer, lava_troll_phase;
     float step_sound_timer;

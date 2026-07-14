@@ -41,7 +41,8 @@ static void set_message(const char *text, float seconds)
 static void init_platforms(void)
 {
     const Platform p[PLATFORM_COUNT] = {
-        {   0, 147, 60, 5 }, { 260, 147, 60, 5 },
+        /* Compact player pads: P1 uses the left; the right is reserved for P2. */
+        {   8, 147, 34, 5 }, { 278, 147, 34, 5 },
         {  67, 125, 58, 4 }, { 195, 125, 58, 4 },
         { 124,  99, 72, 4 },
         {  18,  64, 72, 4 }, { 230,  64, 72, 4 },
@@ -71,9 +72,9 @@ static void burst(float x, float y, uint32_t color, int count, float speed)
     }
 }
 
-static void spawn_player(void)
+static void spawn_player_at(int platform_index)
 {
-    Platform *p = &G.platforms[(G.lives & 1) ? 0 : 1];
+    Platform *p = &G.platforms[platform_index];
     G.player = (Rider){0};
     G.player.x = p->x + p->w * 0.5f - RIDER_W * 0.5f;
     G.player.y = p->y - RIDER_H;
@@ -84,8 +85,15 @@ static void spawn_player(void)
     G.player.spawn_timer = 0.85f;
     G.player.invuln = 1.55f;
     G.respawn_timer = 0;
+    G.left_input = G.right_input = 0;
+    G.step_sound_timer = 0;
     burst(G.player.x + RIDER_W * 0.5f, G.player.y + RIDER_H * 0.5f,
           0xd9f6ff, 18, 28.0f);
+}
+
+static void respawn_player(void)
+{
+    spawn_player_at(0);
 }
 
 static Enemy *spawn_enemy(int type, float x, float y)
@@ -151,6 +159,8 @@ static void begin_wave(void)
         { 3, 0, 0 }, { 4, 1, 0 }, { 3, 2, 0 }, { 2, 3, 1 }, { 2, 4, 2 },
     };
     G.wave++;
+    /* Player 1 owns the left pad; the matching right pad is reserved for P2. */
+    spawn_player_at(0);
     int counts[EN_TYPE_COUNT];
     if (G.wave <= 5) {
         memcpy(counts, waves[G.wave - 1], sizeof counts);
@@ -208,7 +218,6 @@ void game_start(void)
     G.state = GS_PLAYING;
     G.lava_troll_timer = 7.0f + game_randf() * 7.0f;
     init_platforms();
-    spawn_player();
     begin_wave();
 }
 
@@ -289,6 +298,7 @@ static void kill_player(void)
     sound_play(SFX_HURT, 0.9f, 1.0f);
     if (G.lives <= 0) {
         G.state = GS_GAMEOVER;
+        G.gameover_choice = GAMEOVER_RESTART;
         if (G.score > G.high_score) G.high_score = G.score;
         set_message("GAME OVER", 99.0f);
     } else {
@@ -320,7 +330,7 @@ static void update_player(void)
 {
     Rider *p = &G.player;
     if (!p->active) {
-        if (G.lives > 0 && (G.respawn_timer -= TICK_DT) <= 0) spawn_player();
+        if (G.lives > 0 && (G.respawn_timer -= TICK_DT) <= 0) respawn_player();
         return;
     }
     G.left_input = fmaxf(0, G.left_input - TICK_DT);
@@ -559,7 +569,30 @@ void game_handle_key(int key)
         return;
     }
     if (G.state == GS_GAMEOVER) {
-        if (key == KEY_ENTER || key == ' ' || key == 'r' || key == 'R') game_start();
+        int previous = G.gameover_choice;
+        if (key == KEY_UP || key == KEY_LEFT || key == 'w' || key == 'W' ||
+            key == 'a' || key == 'A') {
+            G.gameover_choice = GAMEOVER_RESTART;
+        } else if (key == KEY_DOWN || key == KEY_RIGHT || key == 's' || key == 'S' ||
+                   key == 'd' || key == 'D') {
+            G.gameover_choice = GAMEOVER_MENU;
+        } else if (key == KEY_ENTER) {
+            sound_play(SFX_MENU, 0.7f, 1.25f);
+            if (G.gameover_choice == GAMEOVER_RESTART) {
+                game_start();
+            } else {
+                G.state = GS_TITLE;
+                G.player.active = false;
+                memset(G.enemies, 0, sizeof G.enemies);
+                memset(G.eggs, 0, sizeof G.eggs);
+                memset(G.particles, 0, sizeof G.particles);
+                G.left_input = G.right_input = 0;
+                G.wave_timer = G.respawn_timer = 0;
+                set_message("", 0);
+            }
+            return;
+        }
+        if (G.gameover_choice != previous) sound_play(SFX_MENU, 0.5f, 1.0f);
         return;
     }
     if (key == 'p' || key == 'P' || key == KEY_ESC) {
@@ -619,6 +652,8 @@ bool game_validate(char *error, size_t error_len)
 {
 #define BAD(...) do { snprintf(error, error_len, __VA_ARGS__); return false; } while (0)
     if (G.wave < 0 || G.lives < 0 || G.lives > 3) BAD("bad counters: wave=%d lives=%d", G.wave, G.lives);
+    if (G.gameover_choice < 0 || G.gameover_choice >= GAMEOVER_OPTION_COUNT)
+        BAD("bad game-over choice: %d", G.gameover_choice);
     if (G.score < 0 || G.high_score < G.score) BAD("bad score: %d high=%d", G.score, G.high_score);
     if (game_active_enemies() > MAX_ENEMIES || game_active_eggs() > MAX_EGGS) BAD("object count overflow");
     if (G.player.active && (!isfinite(G.player.x) || !isfinite(G.player.y) ||

@@ -59,7 +59,8 @@ runs silently.
 | Up / W / Space | Flap |
 | P / Esc | Pause / resume |
 | M | Toggle sound |
-| Enter | Start, continue, or restart |
+| Arrow keys / W/S/A/D (menus) | Change the selected option |
+| Enter | Start or confirm the selected option |
 | Q | Quit |
 
 The terminal delivers key-repeat events rather than key-up events. Joustix uses
