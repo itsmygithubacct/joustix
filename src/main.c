@@ -428,9 +428,12 @@ static int sound_test(void)
         return 0;
     }
     puts("sound-test: menu, flap, step, land, joust, hurt, egg, hatch, wave, lava");
+    static const int delay_ms[SFX_COUNT] = {
+        250, 320, 220, 350, 520, 700, 530, 580, 1280, 780
+    };
     for (int i = 0; i < SFX_COUNT; i++) {
         sound_play(i, .8f, 1);
-        sleep_ms(i == SFX_WAVE ? 1000 : 550);
+        sleep_ms(delay_ms[i]);
     }
     sound_shutdown();
     return 0;
@@ -444,7 +447,7 @@ static void usage(void)
          "  --selftest [seed] [ticks]   deterministic headless simulation\n"
          "  --rules-test                deterministic gameplay regressions\n"
          "  --render-test [seed]        write four PPM scene snapshots\n"
-         "  --sound-test                play procedural effects\n"
+         "  --sound-test                play every production sound bank\n"
          "  --version                   print version\n"
          "  --help                      show this help\n"
          "\nenvironment:\n"

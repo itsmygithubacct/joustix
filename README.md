@@ -22,8 +22,9 @@ waves while avoiding the lava below.
   troll, modular platforms, a moonlit volcanic stage, and a dedicated defeat
   scene
 - Animated lava accents, particles, spawn effects, and screen shake
-- Layered procedural arcade sound streamed to `pacat`, `pw-play`, `aplay`, or
-  SoX `play`
+- Forty bundled physical-Foley and arcade SFX across ten no-immediate-repeat
+  variation banks, streamed to `pacat`, `pw-play`, `aplay`, or SoX `play`, with
+  a procedural fallback when the WAV assets are unavailable
 - Resize-safe 16:9 playfield, flicker-free Kitty image double buffering, and
   asynchronous zlib/base64 presentation
 - Deterministic headless game and render tests
@@ -92,14 +93,17 @@ automatically.
 | `src/game.c` | physics, AI, collision, waves, eggs, hazards, input |
 | `src/render.c` | RGBA software rasterizer, embedded 5x7 font, keyed sprite atlases |
 | `src/term.c` | raw input and threaded Kitty framebuffer presentation |
-| `src/sound.c` | procedural effects, live mixer, optional audio sink |
+| `src/sound.c` | strict PCM WAV banks, procedural fallback, live mixer, optional audio sink |
 | `src/main.c` | interactive loop, CLI, selftests, snapshot tests |
 
-The runtime image inventory and public-release provenance are documented in
+The runtime image and audio inventory and public-release provenance are documented in
 [`docs/asset-sources.md`](docs/asset-sources.md). Joustix is an original
 implementation inspired by the flying-joust arcade genre. It does not include
 assets or code from the commercial arcade game.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Code and project-specific visual assets are MIT licensed to the extent
+applicable. The bundled ElevenLabs-generated WAV files have a separate asset
+exception: they are game components, not standalone MIT samples. See
+[LICENSE](LICENSE) and [asset provenance](docs/asset-sources.md).

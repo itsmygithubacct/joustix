@@ -19,3 +19,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Sound-effect asset exception
+
+The MIT License above does not apply to the ElevenLabs-generated WAV files in
+assets/sfx/. Those files are included solely as bundled components of Joustix,
+subject to the ElevenLabs Terms of Service, Sound Effects Terms, and Prohibited
+Use Policy. No permission is granted here to sell, distribute, license,
+sublicense, or otherwise exploit those sound effects on a standalone basis,
+including as isolated files, samples, or part of a sound library. See
+docs/asset-sources.md and docs/audio-provenance.json.
