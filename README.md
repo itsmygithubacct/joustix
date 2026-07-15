@@ -27,6 +27,8 @@ waves while avoiding the lava below.
   a procedural fallback when the WAV assets are unavailable
 - Resize-safe 16:9 playfield, flicker-free Kitty image double buffering, and
   asynchronous zlib/base64 presentation
+- Independent held-key input through the Kitty keyboard protocol, including
+  simultaneous direction and flap controls
 - Deterministic headless game and render tests
 
 ## Build and run
@@ -64,9 +66,10 @@ runs silently.
 | Enter | Start or confirm the selected option |
 | Q | Quit |
 
-The terminal delivers key-repeat events rather than key-up events. Joustix uses
-a short input latch so taps work immediately and held direction keys remain
-smooth when the terminal begins repeating them.
+Joustix requests the Kitty keyboard protocol's press, repeat, and release
+events. Opposite directions cancel while both are held, and releasing either
+one leaves the other active. Terminals without enhanced keyboard reporting use
+a short press-latch fallback.
 
 ## Development
 
@@ -92,9 +95,14 @@ automatically.
 |---|---|
 | `src/game.c` | physics, AI, collision, waves, eggs, hazards, input |
 | `src/render.c` | RGBA software rasterizer, embedded 5x7 font, keyed sprite atlases |
-| `src/term.c` | raw input and threaded Kitty framebuffer presentation |
+| `src/term.c` | enhanced keyboard input and threaded Kitty framebuffer presentation |
 | `src/sound.c` | strict PCM WAV banks, procedural fallback, live mixer, optional audio sink |
 | `src/main.c` | interactive loop, CLI, selftests, snapshot tests |
+
+The generic keyboard decoder is imported from
+[`kitty-keyboard`](https://github.com/itsmygithubacct/kitty-keyboard) under
+`third_party/kitty_keyboard` so ordinary checkouts and source archives remain
+self-contained.
 
 The runtime image and audio inventory and public-release provenance are documented in
 [`docs/asset-sources.md`](docs/asset-sources.md). Joustix is an original

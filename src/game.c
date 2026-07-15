@@ -300,6 +300,14 @@ static void flap(Rider *r, float power)
     r->flap_cooldown = 0.105f;
 }
 
+static void flap_player(void)
+{
+    if (!G.player.active || G.player.flap_cooldown > 0 ||
+        G.player.spawn_timer > 0) return;
+    flap(&G.player, 62.0f);
+    sound_play(SFX_FLAP, 0.42f, 0.92f + game_randf() * 0.12f);
+}
+
 static void kill_player(void)
 {
     if (!G.player.active || G.player.invuln > 0) return;
@@ -348,9 +356,14 @@ static void update_player(void)
         if (G.lives > 0 && (G.respawn_timer -= TICK_DT) <= 0) respawn_player();
         return;
     }
-    G.left_input = fmaxf(0, G.left_input - TICK_DT);
-    G.right_input = fmaxf(0, G.right_input - TICK_DT);
-    int axis = (G.right_input > 0) - (G.left_input > 0);
+    int axis;
+    if (G.held_controls) {
+        axis = (G.held_right ? 1 : 0) - (G.held_left ? 1 : 0);
+    } else {
+        G.left_input = fmaxf(0, G.left_input - TICK_DT);
+        G.right_input = fmaxf(0, G.right_input - TICK_DT);
+        axis = (G.right_input > 0) - (G.left_input > 0);
+    }
     if (axis) {
         p->dir = axis;
         p->vx += axis * PLAYER_ACCEL * TICK_DT;
@@ -360,6 +373,7 @@ static void update_player(void)
         else p->vx = fminf(0, p->vx + drag);
     }
     p->vx = clampf(p->vx, -PLAYER_MAX_SPEED, PLAYER_MAX_SPEED);
+    if (G.held_controls && G.held_flap) flap_player();
     bool was_on_platform = p->on_platform;
     float landing_speed = p->vy;
     bool hit_lava = update_rider_physics(p);
@@ -380,6 +394,15 @@ static void update_player(void)
         G.step_sound_timer = 0;
     }
     if (hit_lava) kill_player();
+}
+
+void game_set_held_controls(bool available, bool left, bool right, bool flap_held)
+{
+    G.held_controls = available;
+    G.held_left = available && left;
+    G.held_right = available && right;
+    G.held_flap = available && flap_held;
+    if (available) G.left_input = G.right_input = 0;
 }
 
 static float wrapped_dx(float from, float to)
@@ -639,17 +662,20 @@ void game_handle_key(int key)
         G.left_input = 0;
         G.player.dir = 1;
     } else if (key == KEY_UP || key == 'w' || key == 'W' || key == ' ') {
-        if (G.player.flap_cooldown <= 0 && G.player.spawn_timer <= 0) {
-            flap(&G.player, 62.0f);
-            sound_play(SFX_FLAP, 0.42f, 0.92f + game_randf() * 0.12f);
-        }
+        flap_player();
     }
 }
 
 void game_autopilot(void)
 {
-    if (G.state == GS_TITLE || G.state == GS_GAMEOVER) { game_start(); return; }
-    if (G.state != GS_PLAYING || !G.player.active || G.player.spawn_timer > 0) return;
+    if (G.state == GS_TITLE || G.state == GS_GAMEOVER) {
+        game_start();
+        return;
+    }
+    if (G.state != GS_PLAYING || !G.player.active || G.player.spawn_timer > 0) {
+        game_set_held_controls(true, false, false, false);
+        return;
+    }
     float tx = LOGICAL_W * 0.5f, ty = 95.0f;
     float best = 1e9f;
     for (int i = 0; i < MAX_EGGS; i++) {
@@ -668,9 +694,8 @@ void game_autopilot(void)
         }
     }
     float dx = wrapped_dx(G.player.x, tx);
-    if (dx < -2) game_handle_key(KEY_LEFT);
-    if (dx > 2) game_handle_key(KEY_RIGHT);
-    if (G.player.y > ty || G.player.y > 132.0f) game_handle_key(KEY_UP);
+    game_set_held_controls(true, dx < -2, dx > 2,
+                           G.player.y > ty || G.player.y > 132.0f);
 }
 
 bool game_validate(char *error, size_t error_len)

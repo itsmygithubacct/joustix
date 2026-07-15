@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "kitty_keyboard.h"
+
 #define LOGICAL_W 320.0f
 #define LOGICAL_H 180.0f
 #define LAVA_TOP  164.0f
@@ -85,6 +87,7 @@ typedef struct {
     float step_sound_timer;
     int step_sound_side;
     float lava_troll_x;
+    bool held_controls, held_left, held_right, held_flap;
     char message[80];
 } GameState;
 
@@ -98,6 +101,7 @@ void game_init(int w, int h, uint32_t seed);
 void game_start(void);
 void game_tick(void);
 void game_handle_key(int key);
+void game_set_held_controls(bool available, bool left, bool right, bool flap);
 void game_autopilot(void);
 bool game_validate(char *error, size_t error_len);
 int game_active_enemies(void);
@@ -114,7 +118,10 @@ bool render_validate_assets(char *error, size_t error_len);
 bool term_init(int *out_w, int *out_h);
 bool term_check_resize(int *out_w, int *out_h);
 void term_present(const uint8_t *rgba, int w, int h);
-int term_poll_key(void);
+int term_read_input(void);
+bool term_next_key_event(kittykb_event *event);
+bool term_key_down(uint32_t key);
+bool term_has_release_events(void);
 void term_shutdown(void);
 void term_emergency_restore(void);
 

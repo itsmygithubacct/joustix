@@ -1,6 +1,8 @@
 /* Raw terminal input and asynchronous Kitty graphics presentation. */
 #include "joustix.h"
+#include "kitty_keyboard_posix.h"
 
+#include <errno.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -15,6 +17,8 @@
 static volatile sig_atomic_t winch_flag;
 static struct termios original_termios;
 static bool raw_active;
+static bool keyboard_active;
+static kittykb_terminal keyboard;
 static volatile int shutdown_claimed;
 static pthread_mutex_t frame_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool clear_pending;
@@ -94,6 +98,8 @@ static bool kitty_probe(void)
 
 bool term_init(int *out_w, int *out_h)
 {
+    kittykb_terminal_options keyboard_options;
+
     if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) return false;
     if (!measure_geometry(out_w, out_h)) return false;
     if (tcgetattr(STDIN_FILENO, &original_termios) != 0) return false;
@@ -116,6 +122,23 @@ bool term_init(int *out_w, int *out_h)
     }
     signal(SIGWINCH, on_winch);
     write_str("\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H");
+
+    kittykb_terminal_init(&keyboard);
+    kittykb_terminal_options_init(&keyboard_options);
+    keyboard_options.flags = KITTYKB_FLAGS_KEY_STATE;
+    keyboard_options.make_raw = false;
+    keyboard_options.make_nonblocking = false;
+    if (kittykb_terminal_start(&keyboard, STDIN_FILENO, STDOUT_FILENO,
+                               &keyboard_options) != 0) {
+        int error = errno;
+        write_str("\x1b[?25h\x1b[?1049l");
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios);
+        raw_active = false;
+        fprintf(stderr, "joustix: keyboard setup failed: %s\n", strerror(error));
+        errno = error;
+        return false;
+    }
+    keyboard_active = true;
     return true;
 }
 
@@ -147,6 +170,10 @@ static bool claim_shutdown(void)
 
 static void restore_terminal(void)
 {
+    if (keyboard_active) {
+        (void)kittykb_terminal_stop(&keyboard);
+        keyboard_active = false;
+    }
     /* The first ST also closes an interrupted APC payload. */
     write_str("\x1b\\\x1b_Ga=d,d=A,q=2\x1b\\\x1b[?25h\x1b[?1049l");
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios);
@@ -164,7 +191,14 @@ void term_shutdown(void)
 
 void term_emergency_restore(void)
 {
-    if (claim_shutdown()) restore_terminal();
+    static const char emergency[] =
+        "\x1b\\\x1b_Ga=d,d=A,q=2\x1b\\\x1b[<u\x1b[?25h\x1b[?1049l";
+
+    if (!claim_shutdown()) return;
+    /* write() is used directly because this path runs from a signal handler. */
+    (void)write(STDOUT_FILENO, emergency, sizeof emergency - 1);
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios);
+    raw_active = false;
 }
 
 static const char base64_chars[] =
@@ -315,28 +349,27 @@ static void presenter_stop(void)
     pthread_join(presenter, NULL);
 }
 
-int term_poll_key(void)
+int term_read_input(void)
 {
-    unsigned char c;
-    if (read(STDIN_FILENO, &c, 1) <= 0) return -1;
-    if (c == '\r' || c == '\n') return KEY_ENTER;
-    if (c == 127 || c == 8) return KEY_BACKSPACE;
-    if (c == '\t') return KEY_TAB;
-    if (c == 3) { G.quit = true; return -1; }
-    if (c != 0x1b) return c;
-
-    unsigned char seq;
-    if (!read_byte_timeout(&seq, 25)) return KEY_ESC;
-    if (seq != '[' && seq != 'O') return KEY_ESC;
-    if (!read_byte_timeout(&seq, 25)) return KEY_ESC;
-    switch (seq) {
-    case 'A': return KEY_UP;
-    case 'B': return KEY_DOWN;
-    case 'C': return KEY_RIGHT;
-    case 'D': return KEY_LEFT;
-    default:
-        while ((seq >= '0' && seq <= '9') || seq == ';')
-            if (!read_byte_timeout(&seq, 10)) break;
+    if (!keyboard_active) {
+        errno = EINVAL;
         return -1;
     }
+    return kittykb_terminal_read(&keyboard);
+}
+
+bool term_next_key_event(kittykb_event *event)
+{
+    return keyboard_active && kittykb_input_next(&keyboard.input, event);
+}
+
+bool term_key_down(uint32_t key)
+{
+    return keyboard_active && kittykb_input_key_down(&keyboard.input, key);
+}
+
+bool term_has_release_events(void)
+{
+    return keyboard_active &&
+           kittykb_input_has_release_events(&keyboard.input);
 }
