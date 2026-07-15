@@ -1,6 +1,7 @@
 #include "joustix.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -61,6 +62,46 @@ static void sleep_ms(double milliseconds)
     while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {}
 }
 
+static bool event_matches_letter(const kittykb_event *event, char lower)
+{
+    char upper = (char)(lower - 'a' + 'A');
+    return kittykb_event_matches_key(event, (uint32_t)(unsigned char)lower) ||
+           kittykb_event_matches_key(event, (uint32_t)(unsigned char)upper);
+}
+
+static int game_key_from_event(const kittykb_event *event)
+{
+    static const char letters[] = "admpqrsw";
+    for (size_t i = 0; i < sizeof letters - 1; i++)
+        if (event_matches_letter(event, letters[i])) return letters[i];
+
+    switch (event->key) {
+    case KITTYKB_KEY_ENTER: return KEY_ENTER;
+    case KITTYKB_KEY_BACKSPACE: return KEY_BACKSPACE;
+    case KITTYKB_KEY_TAB: return KEY_TAB;
+    case KITTYKB_KEY_ESCAPE: return KEY_ESC;
+    case KITTYKB_KEY_UP: return KEY_UP;
+    case KITTYKB_KEY_DOWN: return KEY_DOWN;
+    case KITTYKB_KEY_RIGHT: return KEY_RIGHT;
+    case KITTYKB_KEY_LEFT: return KEY_LEFT;
+    default:
+        return event->key <= (uint32_t)INT_MAX ? (int)event->key : -1;
+    }
+}
+
+static bool gameplay_control_key(int key)
+{
+    return key == KEY_LEFT || key == KEY_RIGHT || key == KEY_UP ||
+           key == 'a' || key == 'd' || key == 'w' || key == ' ';
+}
+
+static bool interrupt_event(const kittykb_event *event)
+{
+    return event->key == 3u ||
+           (event_matches_letter(event, 'c') &&
+            (event->modifiers & KITTYKB_MOD_CTRL) != 0u);
+}
+
 static void on_signal(int sig)
 {
     (void)sig;
@@ -100,8 +141,30 @@ static int run_interactive(void)
     const double frame_ms = 1000.0 / 30.0;
     double next_frame = now_ms();
     while (!G.quit) {
-        int key;
-        while ((key = term_poll_key()) != -1) game_handle_key(key);
+        kittykb_event event;
+        if (term_read_input() < 0) {
+            G.quit = true;
+            break;
+        }
+        bool held_input = term_has_release_events();
+        while (term_next_key_event(&event)) {
+            if (event.action != KITTYKB_ACTION_PRESS) continue;
+            if (interrupt_event(&event)) {
+                G.quit = true;
+                continue;
+            }
+            int key = game_key_from_event(&event);
+            if (key < 0 || (held_input && G.state == GS_PLAYING &&
+                            gameplay_control_key(key))) continue;
+            game_handle_key(key);
+        }
+        if (G.quit) break;
+        game_set_held_controls(
+            held_input,
+            term_key_down('a') || term_key_down(KITTYKB_KEY_LEFT),
+            term_key_down('d') || term_key_down(KITTYKB_KEY_RIGHT),
+            term_key_down('w') || term_key_down(' ') ||
+                term_key_down(KITTYKB_KEY_UP));
         int nw, nh;
         if (term_check_resize(&nw, &nh) && (nw != G.W || nh != G.H)) {
             G.W = nw; G.H = nh;
@@ -257,7 +320,7 @@ static int rules_test(void)
     memset(G.enemies, 0, sizeof G.enemies);
     memset(G.eggs, 0, sizeof G.eggs);
     G.state = GS_PLAYING;
-    G.left_input = G.right_input = 0;
+    game_set_held_controls(true, false, false, false);
     G.player = (Rider){ .x = 100, .y = 80, .prev_y = 80,
                         .dir = 1, .active = true, .invuln = 10 };
     G.enemies[0] = (Enemy){
@@ -265,18 +328,31 @@ static int rules_test(void)
                    .spawn_timer = 99 },
         .type = EN_BOUNDER,
     };
-    game_handle_key(KEY_RIGHT);
+    game_set_held_controls(true, false, true, false);
     for (int i = 0; i < 14; i++) game_tick();
     EXPECT(G.player.x > 106.5f && G.player.vx > 50.0f,
-           "directional tap produces decisive forward momentum");
-    game_handle_key(KEY_LEFT);
-    EXPECT(G.player.dir == -1 && G.left_input > 0 && G.right_input == 0,
-           "opposite direction input reverses immediately");
+           "held direction produces decisive forward momentum");
+    float before_cancel = G.player.vx;
+    game_set_held_controls(true, true, true, false);
+    game_tick();
+    EXPECT(G.player.vx < before_cancel,
+           "simultaneous opposite directions cancel acceleration");
+    game_set_held_controls(true, true, false, false);
+    game_tick();
+    EXPECT(G.player.dir == -1 && G.player.vx < before_cancel,
+           "releasing one direction preserves the other held direction");
+    G.player.vy = 0;
+    G.player.flap_cooldown = 0;
+    game_set_held_controls(true, false, true, true);
+    game_tick();
+    EXPECT(G.player.vx > 0 && G.player.vy < 0,
+           "direction and flap holds apply simultaneously");
 
     memset(G.enemies, 0, sizeof G.enemies);
     memset(G.eggs, 0, sizeof G.eggs);
     memset(G.particles, 0, sizeof G.particles);
     G.state = GS_PLAYING;
+    game_set_held_controls(false, false, false, false);
     G.left_input = G.right_input = 0;
     G.player = (Rider){ .x = 130, .y = 85.5f, .prev_y = 85.5f, .vy = 35,
                         .dir = 1, .active = true, .invuln = 10 };
