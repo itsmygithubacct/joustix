@@ -1,5 +1,6 @@
-/* Procedural mono sound mixed into the first available command-line sink. */
+/* Banked PCM sound with a procedural fallback and command-line sink mixer. */
 #include "joustix.h"
+#include "pcm_wav.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -16,11 +17,14 @@
 #define SAMPLE_RATE 44100
 #define MIX_FRAMES 384
 #define MAX_VOICES 16
+#define MAX_SFX_VARIANTS 8
 
 typedef struct { int16_t *data; int length; } Sample;
 typedef struct { const int16_t *data; int length; float position, step, volume; bool active; } Voice;
 
-static Sample samples[SFX_COUNT];
+static Sample samples[SFX_COUNT][MAX_SFX_VARIANTS];
+static uint8_t sample_counts[SFX_COUNT];
+static uint8_t last_variants[SFX_COUNT];
 static Voice voices[MAX_VOICES];
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t mixer_thread;
@@ -31,12 +35,27 @@ static pid_t sink_pid = -1;
 static uint32_t audio_rng = 0x51a7c0deu;
 static bool thread_started;
 
-static float noise_sample(void)
+static uint32_t audio_random_u32(void)
 {
     audio_rng ^= audio_rng << 13;
     audio_rng ^= audio_rng >> 17;
     audio_rng ^= audio_rng << 5;
-    return ((audio_rng >> 8) * (1.0f / 8388608.0f)) - 1.0f;
+    return audio_rng;
+}
+
+static float noise_sample(void)
+{
+    return ((audio_random_u32() >> 8) * (1.0f / 8388608.0f)) - 1.0f;
+}
+
+static void clear_sample_bank(int id)
+{
+    if (id < 0 || id >= SFX_COUNT) return;
+    for (int variant = 0; variant < MAX_SFX_VARIANTS; variant++) {
+        free(samples[id][variant].data);
+        samples[id][variant] = (Sample){0};
+    }
+    sample_counts[id] = 0;
 }
 
 static void bake(int id, float *src, int n, float peak)
@@ -52,8 +71,9 @@ static void bake(int id, float *src, int n, float peak)
         if (n - i < 220) fade *= (n - i) / 220.0f;
         out[i] = (int16_t)(clampf(src[i] * gain * fade, -1, 1) * 32767.0f);
     }
-    free(samples[id].data);
-    samples[id] = (Sample){ out, n };
+    clear_sample_bank(id);
+    samples[id][0] = (Sample){ out, n };
+    sample_counts[id] = 1;
 }
 
 static void add_note(float *s, int n, float start, float duration, float frequency,
@@ -289,6 +309,64 @@ static void synthesize(void)
     make_lava();
 }
 
+static const char *const sfx_files[SFX_COUNT] = {
+    [SFX_MENU] = "sfx/menu.wav",
+    [SFX_FLAP] = "sfx/flap.wav",
+    [SFX_STEP] = "sfx/step.wav",
+    [SFX_LAND] = "sfx/land.wav",
+    [SFX_JOUST] = "sfx/joust.wav",
+    [SFX_HURT] = "sfx/hurt.wav",
+    [SFX_EGG] = "sfx/egg.wav",
+    [SFX_HATCH] = "sfx/hatch.wav",
+    [SFX_WAVE] = "sfx/wave.wav",
+    [SFX_LAVA] = "sfx/lava.wav",
+};
+
+static bool variant_filename(const char *base, int variant, char *out, size_t size)
+{
+    if (variant == 0)
+        return snprintf(out, size, "%s", base) < (int)size;
+    const char *extension = strrchr(base, '.');
+    if (!extension) return false;
+    int stem = (int)(extension - base);
+    return snprintf(out, size, "%.*s_v%02d%s", stem, base,
+                    variant + 1, extension) < (int)size;
+}
+
+static void load_external_sounds(void)
+{
+    for (int id = 0; id < SFX_COUNT; id++) {
+        Sample loaded[MAX_SFX_VARIANTS] = {{0}};
+        int count = 0;
+        for (int variant = 0; variant < MAX_SFX_VARIANTS; variant++) {
+            char relative[96];
+            if (!variant_filename(sfx_files[id], variant, relative, sizeof relative))
+                break;
+            int16_t *data = NULL;
+            int frames = 0;
+            if (!pcm_wav_load_mono_44100(asset_path(relative), &data, &frames))
+                break;
+            loaded[count++] = (Sample){data, frames};
+        }
+        if (count == 0) continue;
+        clear_sample_bank(id);
+        for (int variant = 0; variant < count; variant++)
+            samples[id][variant] = loaded[variant];
+        sample_counts[id] = (uint8_t)count;
+    }
+}
+
+static int choose_variant(int id)
+{
+    int count = sample_counts[id];
+    if (count <= 1) return 0;
+    int variant;
+    do variant = (int)(audio_random_u32() % (uint32_t)count);
+    while (variant == last_variants[id]);
+    last_variants[id] = (uint8_t)variant;
+    return variant;
+}
+
 static bool executable_on_path(const char *name)
 {
     const char *path = getenv("PATH");
@@ -383,6 +461,8 @@ static void *mix_loop(void *unused)
 bool sound_init(void)
 {
     synthesize();
+    memset(last_variants, 0xff, sizeof last_variants);
+    load_external_sounds();
     signal(SIGPIPE, SIG_IGN);
     if (!start_sink()) return false;
     atomic_store(&running, true);
@@ -414,9 +494,7 @@ void sound_shutdown(void)
     pthread_mutex_lock(&lock);
     memset(voices, 0, sizeof voices);
     pthread_mutex_unlock(&lock);
-    for (int i = 0; i < SFX_COUNT; i++) {
-        free(samples[i].data); samples[i].data = NULL; samples[i].length = 0;
-    }
+    for (int i = 0; i < SFX_COUNT; i++) clear_sample_bank(i);
 }
 
 void sound_set_enabled(bool on) { enabled = on; }
@@ -424,7 +502,9 @@ bool sound_is_enabled(void) { return enabled; }
 
 void sound_play(int id, float volume, float pitch)
 {
-    if (!enabled || id < 0 || id >= SFX_COUNT || !samples[id].data || !atomic_load(&running)) return;
+    if (!enabled || id < 0 || id >= SFX_COUNT || sample_counts[id] == 0 ||
+        !atomic_load(&running)) return;
+    Sample *sample = &samples[id][choose_variant(id)];
     pthread_mutex_lock(&lock);
     int slot = -1;
     float oldest = -1;
@@ -432,7 +512,7 @@ void sound_play(int id, float volume, float pitch)
         if (!voices[i].active) { slot = i; break; }
         if (voices[i].position > oldest) { oldest = voices[i].position; slot = i; }
     }
-    voices[slot] = (Voice){ samples[id].data, samples[id].length, 0,
+    voices[slot] = (Voice){ sample->data, sample->length, 0,
                             clampf(pitch, .45f, 2.2f), clampf(volume, 0, 1), true };
     pthread_mutex_unlock(&lock);
 }
