@@ -22,7 +22,7 @@ waves while avoiding the lava below.
   troll, modular platforms, a moonlit volcanic stage, and a dedicated defeat
   scene
 - Animated lava accents, particles, spawn effects, and screen shake
-- Forty bundled physical-Foley and arcade SFX across ten no-immediate-repeat
+- Forty bundled locally-generated CC0-derived SFX across ten no-immediate-repeat
   variation banks, streamed to `pacat`, `pw-play`, `aplay`, or SoX `play`, with
   a procedural fallback when the WAV assets are unavailable
 - Resize-safe 16:9 playfield, flicker-free Kitty image double buffering, and
@@ -112,6 +112,6 @@ assets or code from the commercial arcade game.
 ## License
 
 Code and project-specific visual assets are MIT licensed to the extent
-applicable. The bundled ElevenLabs-generated WAV files have a separate asset
-exception: they are game components, not standalone MIT samples. See
-[LICENSE](LICENSE) and [asset provenance](docs/asset-sources.md).
+applicable. The bundled WAV files in `assets/sfx/` are locally generated and
+CC0-derived, with no standalone-use restriction — see [LICENSE](LICENSE) and
+[asset provenance](docs/asset-sources.md).
