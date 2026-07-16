@@ -95,11 +95,12 @@ automatically.
 |---|---|
 | `src/game.c` | physics, AI, collision, waves, eggs, hazards, input |
 | `src/render.c` | RGBA software rasterizer, embedded 5x7 font, keyed sprite atlases |
-| `src/term.c` | enhanced keyboard input and threaded Kitty framebuffer presentation |
-| `src/sound.c` | strict PCM WAV banks, procedural fallback, live mixer, optional audio sink |
+| `src/term.c` | enhanced keyboard input around vendored `kitty-framebuffer` |
+| `src/sound.c` | PCM WAV banks and procedural fallback routed through vendored `pcm-mixer` |
 | `src/main.c` | interactive loop, CLI, selftests, snapshot tests |
 
-The generic keyboard decoder is imported from
+The shared framebuffer, mixer, and generic keyboard decoder are imported under
+`third_party/`; the keyboard source comes from
 [`kitty-keyboard`](https://github.com/itsmygithubacct/kitty-keyboard) under
 `third_party/kitty_keyboard` so ordinary checkouts and source archives remain
 self-contained.
