@@ -37,36 +37,36 @@ four-step ground run, followed by glide, wing-up, wing-down, and dive poses.
 
 The 40 WAV files under `assets/sfx/` form ten cue-specific variation banks:
 menu motion, giant-bird wing flaps and stone footsteps, armored landings and
-lance collisions, bird damage, egg settling and hatching, a real-brass wave
-fanfare, and a molten-lava fall. They were generated specifically for Joustix
-with ElevenLabs Text to Sound Effects v2 (`eleven_text_to_sound_v2`) during the
-account owner's paid Starter subscription.
+lance collisions, bird damage, egg settling and hatching, a wave fanfare, and a
+molten-lava fall. As of 2026-07-16 every one is **generated locally** by the
+`python_sound_assets` generators and is **CC0-derived**; the ElevenLabs bank
+they replaced was removed (its blobs remain only in git history).
 
-The production field contained 60 candidates. A pinned LAION CLAP model
-provided semantic triage, and candidate score arrays were identical across two
-independent runs. Cue-shape checks rejected implausible onset, repeated-event,
-stationary-noise, clipping, and tail behavior. Selected sources were decoded,
-onset-aligned, downmixed with equal power, trimmed or padded to exact runtime
-length, DC/high-pass cleaned, edge-faded, and reconstructed-peak gain-staged.
-No procedural layer, library sample, or third-party recording was mixed into
-the masters. The C synthesizer remains only as a missing-asset fallback.
+Each cue is rendered by a specific generator and cue, listed with its exact
+command, seed, options, per-file SHA-256, and source recordings in
+[`audio-provenance.json`](audio-provenance.json):
 
-Runtime files are mono 44.1 kHz signed 16-bit PCM WAV. The game loads every
-`_vNN` file into a bank and avoids immediate repeats. Automated QA passed all
-40 files for format, duration, headroom, silence/DC, fades, and duplicates.
+- **flap, hurt, egg, hatch** — `creature_foley_generator` (hybrid): layered from
+  bundled **CC0** recordings (rubberduck creature/breaking SFX; AntumDeluge's
+  Large Wings Flap), each traced in the provenance.
+- **step, joust** — `combat_generators` (pure procedural DSP; CC0 by
+  construction).
+- **land** — `footstep_generator`, a boot on dirt (pure procedural DSP).
+- **wave, menu** — `ui_game_state_generator`, arcade style (pure procedural DSP).
+- **lava** — `lava_sound_generator` (hybrid): a molten bed from PagDev's
+  [Fireplace Sound loop](https://opengameart.org/content/fireplace-sound-loop),
+  CC0.
 
-ElevenLabs states that qualifying paid-plan output may be used commercially
-and indefinitely. Its service-specific restrictions still apply, including a
-prohibition on standalone commercial distribution or licensing of Sound
-Effects output. The WAVs are therefore excluded from this repository's MIT
-grant and included only as bundled Joustix content, not as a sample pack or
-sound library. Terms were checked on 2026-07-14: [paid-plan commercial
-use](https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform),
-[Terms of Service](https://elevenlabs.io/terms-of-use), [Sound Effects
-Terms](https://elevenlabs.io/sound-effects-terms), and [Prohibited Use
-Policy](https://elevenlabs.io/use-policy). Exact prompts, source/final hashes,
-selection metrics, and mastering settings are in
-[`audio-provenance.json`](audio-provenance.json).
+Runtime files are mono 44.1 kHz signed 16-bit PCM WAV, rendered to the game's
+exact filenames (base + `_vNN`). The game loads every `_vNN` file into a bank and
+avoids immediate repeats. The renders are deterministic: re-running each cue's
+recorded command at its recorded seed reproduces the bytes hashed in the
+provenance. The C synthesizer remains only as a missing-asset fallback.
+
+Because every runtime SFX is CC0-derived — pure DSP, or CC0/public-domain source
+recordings only — the WAVs carry **no standalone-use restriction** and are free
+to use, modify, and redistribute. There is no longer any third-party service
+term attached to them.
 
 ## Runtime inventory policy
 
