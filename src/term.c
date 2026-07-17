@@ -1,117 +1,66 @@
-/* Terminal glue over the shared Kitty framebuffer and keyboard libraries. */
+/* Game-facing adapter over the shared terminal-session lifecycle. */
 #include "joustix.h"
-#include "kitty_framebuffer.h"
-#include "kitty_keyboard_posix.h"
+#include "kitty_terminal_session.h"
 
-#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-static kittyfb_session framebuffer;
-static kittykb_terminal keyboard;
-static bool framebuffer_active;
-static bool keyboard_active;
-static volatile int shutdown_claimed;
+static kittyts_session terminal;
 
 bool term_init(int *out_w, int *out_h)
 {
-    kittyfb_options framebuffer_options;
-    kittykb_terminal_options keyboard_options;
-
-    kittyfb_session_init(&framebuffer);
-    kittyfb_options_init(&framebuffer_options);
-    framebuffer_options.min_width = 480;
-    framebuffer_options.min_height = 270;
-    framebuffer_options.max_width = 1440;
-    framebuffer_options.max_height = 900;
+    kittyts_options options;
+    kittyts_session_init(&terminal);
+    kittyts_options_init(&options);
+    options.framebuffer.min_width = 480;
+    options.framebuffer.min_height = 270;
+    options.framebuffer.max_width = 1440;
+    options.framebuffer.max_height = 900;
     if (getenv("JOUSTIX_SKIP_PROBE"))
-        framebuffer_options.probe_graphics = false;
-
-    if (kittyfb_start(&framebuffer, STDIN_FILENO, STDOUT_FILENO,
-                      &framebuffer_options) != 0)
+        options.framebuffer.probe_graphics = false;
+    if (kittyts_start(&terminal, STDIN_FILENO, STDOUT_FILENO, &options) != 0)
         return false;
-    framebuffer_active = true;
-    shutdown_claimed = 0;
-
-    kittykb_terminal_init(&keyboard);
-    kittykb_terminal_options_init(&keyboard_options);
-    keyboard_options.flags = KITTYKB_FLAGS_KEY_STATE;
-    keyboard_options.make_raw = false;
-    keyboard_options.make_nonblocking = false;
-    if (kittykb_terminal_start(&keyboard, STDIN_FILENO, STDOUT_FILENO,
-                               &keyboard_options) != 0) {
-        int error = errno;
-        kittyfb_stop(&framebuffer);
-        framebuffer_active = false;
-        errno = error;
-        return false;
-    }
-    keyboard_active = true;
-    *out_w = kittyfb_width(&framebuffer);
-    *out_h = kittyfb_height(&framebuffer);
+    *out_w = kittyts_width(&terminal);
+    *out_h = kittyts_height(&terminal);
     return true;
 }
 
 bool term_check_resize(int *out_w, int *out_h)
 {
-    return framebuffer_active &&
-           kittyfb_check_resize(&framebuffer, out_w, out_h);
+    return kittyts_check_resize(&terminal, out_w, out_h);
 }
 
 void term_present(const uint8_t *rgba, int w, int h)
 {
-    if (framebuffer_active)
-        (void)kittyfb_present(&framebuffer, rgba, w, h);
+    (void)kittyts_present(&terminal, rgba, w, h);
 }
 
 int term_read_input(void)
 {
-    if (!keyboard_active) {
-        errno = EINVAL;
-        return -1;
-    }
-    return kittykb_terminal_read(&keyboard);
+    return kittyts_read_input(&terminal);
 }
 
 bool term_next_key_event(kittykb_event *event)
 {
-    return keyboard_active && kittykb_input_next(&keyboard.input, event);
+    return kittyts_next_key_event(&terminal, event);
 }
 
 bool term_key_down(uint32_t key)
 {
-    return keyboard_active && kittykb_input_key_down(&keyboard.input, key);
+    return kittyts_key_down(&terminal, key);
 }
 
 bool term_has_release_events(void)
 {
-    return keyboard_active &&
-           kittykb_input_has_release_events(&keyboard.input);
-}
-
-static bool claim_shutdown(void)
-{
-    if (!framebuffer_active) return false;
-    return !__sync_lock_test_and_set(&shutdown_claimed, 1);
+    return kittyts_has_release_events(&terminal);
 }
 
 void term_shutdown(void)
 {
-    if (!claim_shutdown()) return;
-    if (keyboard_active) {
-        (void)kittykb_terminal_stop(&keyboard);
-        keyboard_active = false;
-    }
-    kittyfb_stop(&framebuffer);
-    framebuffer_active = false;
+    kittyts_stop(&terminal);
 }
 
 void term_emergency_restore(void)
 {
-    static const char keyboard_pop[] = "\x1b\\\x1b[<u";
-
-    if (!claim_shutdown()) return;
-    if (keyboard_active)
-        (void)write(STDOUT_FILENO, keyboard_pop, sizeof keyboard_pop - 1);
-    kittyfb_emergency_restore(&framebuffer);
+    kittyts_emergency_restore(&terminal);
 }

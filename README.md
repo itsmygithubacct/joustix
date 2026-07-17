@@ -94,16 +94,15 @@ automatically.
 | File | Role |
 |---|---|
 | `src/game.c` | physics, AI, collision, waves, eggs, hazards, input |
-| `src/render.c` | RGBA software rasterizer, embedded 5x7 font, keyed sprite atlases |
-| `src/term.c` | enhanced keyboard input around vendored `kitty-framebuffer` |
-| `src/sound.c` | PCM WAV banks and procedural fallback routed through vendored `pcm-mixer` |
+| `src/render.c` | game drawing over `soft-raster`, with keyed sprite atlases |
+| `src/term.c` | game adapter over `kitty-terminal-session` |
+| `src/sound.c` | PCM WAV banks and procedural fallback routed through `pcm-mixer` |
 | `src/main.c` | interactive loop, CLI, selftests, snapshot tests |
 
-The shared framebuffer, mixer, and generic keyboard decoder are imported under
-`third_party/`; the keyboard source comes from
-[`kitty-keyboard`](https://github.com/itsmygithubacct/kitty-keyboard) under
-`third_party/kitty_keyboard` so ordinary checkouts and source archives remain
-self-contained.
+The shared rasterizer, mixer, and terminal session are pinned under
+`third_party/`. The terminal-session checkout recursively pins the framebuffer
+and keyboard decoder, so `git clone --recurse-submodules` supplies the complete
+runtime source.
 
 The runtime image and audio inventory and public-release provenance are documented in
 [`docs/asset-sources.md`](docs/asset-sources.md). Joustix is an original

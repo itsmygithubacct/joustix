@@ -1,4 +1,5 @@
 #include "joustix.h"
+#include "soft_raster.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -7,6 +8,7 @@
 #include <string.h>
 
 static uint8_t *fb;
+static sr_canvas canvas;
 static int W, H;
 static float scale_px, origin_x, origin_y, shake_x, shake_y;
 static int clip_x0, clip_y0, clip_x1, clip_y1;
@@ -47,62 +49,40 @@ static const Glyph glyphs[] = {
     {')',{8,4,2,2,2,4,8}},        {'\'',{4,4,2,0,0,0,0}},
 };
 
-uint8_t *render_fb(void) { return fb; }
+uint8_t *render_fb(void)
+{
+    if (fb != NULL)
+        (void)sr_pack_rgba(&canvas, fb, (size_t)W * (size_t)H * 4u);
+    return fb;
+}
 
 static float sx(float x) { return origin_x + shake_x + x * scale_px; }
 static float sy(float y) { return origin_y + shake_y + y * scale_px; }
 
 static void px_blend(int x, int y, uint32_t rgb, float a)
 {
-    if (x < clip_x0 || x >= clip_x1 || y < clip_y0 || y >= clip_y1) return;
-    int ai = (int)(clampf(a, 0, 1) * 256.0f);
-    if (ai <= 0) return;
-    uint8_t *p = fb + ((size_t)y * W + x) * 4;
-    int r = (rgb >> 16) & 255, g = (rgb >> 8) & 255, b = rgb & 255;
-    p[0] = (uint8_t)(p[0] + (((r - p[0]) * ai) >> 8));
-    p[1] = (uint8_t)(p[1] + (((g - p[1]) * ai) >> 8));
-    p[2] = (uint8_t)(p[2] + (((b - p[2]) * ai) >> 8));
-    p[3] = 255;
+    sr_blend(&canvas, x, y, rgb, a);
 }
 
 static void px_set(int x, int y, uint32_t rgb)
 {
-    if (x < clip_x0 || x >= clip_x1 || y < clip_y0 || y >= clip_y1) return;
-    uint8_t *p = fb + ((size_t)y * W + x) * 4;
-    p[0] = (uint8_t)(rgb >> 16);
-    p[1] = (uint8_t)(rgb >> 8);
-    p[2] = (uint8_t)rgb;
-    p[3] = 255;
+    sr_px(&canvas, x, y, rgb);
 }
 
 static void rect_px(int x, int y, int w, int h, uint32_t rgb, float a)
 {
-    for (int py = y; py < y + h; py++)
-        for (int px = x; px < x + w; px++) px_blend(px, py, rgb, a);
+    sr_fill_rect(&canvas, (float)x, (float)y, (float)w, (float)h, rgb, a);
 }
 
 static void circle_px(float cx, float cy, float r, uint32_t rgb, float a)
 {
-    int x0 = (int)floorf(cx - r), x1 = (int)ceilf(cx + r);
-    int y0 = (int)floorf(cy - r), y1 = (int)ceilf(cy + r);
-    float rr = r * r;
-    for (int y = y0; y <= y1; y++)
-        for (int x = x0; x <= x1; x++) {
-            float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
-            if (dx * dx + dy * dy <= rr) px_blend(x, y, rgb, a);
-        }
+    sr_fill_circle(&canvas, cx, cy, r, rgb, a);
 }
 
 static void line_px(float x0, float y0, float x1, float y1, float width,
                     uint32_t rgb, float a)
 {
-    float dx = x1 - x0, dy = y1 - y0;
-    int n = (int)fmaxf(fabsf(dx), fabsf(dy));
-    if (n < 1) n = 1;
-    for (int i = 0; i <= n; i++) {
-        float t = (float)i / n;
-        circle_px(x0 + dx * t, y0 + dy * t, width * 0.5f, rgb, a);
-    }
+    sr_line(&canvas, x0, y0, x1, y1, width, rgb, a, 0, 0);
 }
 
 static void rect_l(float x, float y, float w, float h, uint32_t c, float a)
@@ -157,50 +137,18 @@ static void text_center_l(float x, float y, const char *s, uint32_t c, float a,
     text_px((int)sx(x) - text_width_px(s, size) / 2, (int)sy(y), s, c, a, size);
 }
 
-/* ---------- generated production images ---------- */
-
-static bool ppm_token(FILE *f, char *buffer, size_t length)
-{
-    int c;
-    do {
-        c = fgetc(f);
-        if (c == '#') while (c != '\n' && c != EOF) c = fgetc(f);
-    } while (c != EOF && c <= ' ');
-    if (c == EOF) return false;
-    size_t n = 0;
-    while (c > ' ' && c != EOF) {
-        if (n + 1 < length) buffer[n++] = (char)c;
-        c = fgetc(f);
-    }
-    buffer[n] = '\0';
-    return n > 0;
-}
-
 static Bitmap load_ppm(const char *path)
 {
     Bitmap image = {0};
-    FILE *f = fopen(path, "rb");
-    if (!f) return image;
-    char token[64];
-    if (!ppm_token(f, token, sizeof token) || strcmp(token, "P6") ||
-        !ppm_token(f, token, sizeof token)) { fclose(f); return image; }
-    image.w = atoi(token);
-    if (!ppm_token(f, token, sizeof token)) { fclose(f); return image; }
-    image.h = atoi(token);
-    if (!ppm_token(f, token, sizeof token)) { fclose(f); return image; }
-    int maximum = atoi(token);
-    if (image.w <= 0 || image.h <= 0 || image.w > 4096 || image.h > 4096 ||
-        maximum != 255) { fclose(f); return image; }
-    image.px = malloc((size_t)image.w * image.h * sizeof *image.px);
-    if (!image.px) { fclose(f); return image; }
-    for (int i = 0; i < image.w * image.h; i++) {
-        unsigned char rgb[3];
-        if (fread(rgb, 1, 3, f) != 3) {
-            free(image.px); image.px = NULL; fclose(f); return image;
-        }
-        image.px[i] = (uint32_t)rgb[0] << 16 | (uint32_t)rgb[1] << 8 | rgb[2];
+    sr_canvas loaded;
+    if (!sr_load_ppm(&loaded, path)) return image;
+    if (loaded.w > 4096 || loaded.h > 4096) {
+        sr_canvas_free(&loaded);
+        return image;
     }
-    fclose(f);
+    image.w = loaded.w;
+    image.h = loaded.h;
+    image.px = loaded.px;
     image.ok = true;
     return image;
 }
@@ -512,6 +460,8 @@ void render_resize(int w, int h)
     uint8_t *next = realloc(fb, (size_t)W * H * 4);
     if (!next) { free(fb); fb = NULL; return; }
     fb = next;
+    sr_canvas_free(&canvas);
+    if (!sr_canvas_init(&canvas, W, H)) { free(fb); fb = NULL; return; }
     scale_px = fminf(W / LOGICAL_W, H / LOGICAL_H);
     origin_x = (W - LOGICAL_W * scale_px) * .5f;
     origin_y = (H - LOGICAL_H * scale_px) * .5f;
@@ -519,6 +469,8 @@ void render_resize(int w, int h)
     clip_y0 = (int)floorf(origin_y);
     clip_x1 = (int)ceilf(origin_x + LOGICAL_W * scale_px);
     clip_y1 = (int)ceilf(origin_y + LOGICAL_H * scale_px);
+    sr_canvas_set_clip(&canvas, clip_x0, clip_y0,
+                       clip_x1 - clip_x0, clip_y1 - clip_y0);
 }
 
 void render_shutdown(void)
@@ -529,6 +481,7 @@ void render_shutdown(void)
     free_bitmap(&props_img);
     free_bitmap(&platform_img);
     free(fb); fb = NULL; W = H = 0;
+    sr_canvas_free(&canvas);
 }
 
 static bool expect_bitmap(const Bitmap *image, const char *name, int width, int height,
@@ -580,13 +533,13 @@ void render_frame(void)
 {
     if (!fb) return;
     clip_x0 = clip_y0 = 0; clip_x1 = W; clip_y1 = H;
-    for (size_t i = 0, n = (size_t)W * H; i < n; i++) {
-        fb[i * 4 + 0] = 1; fb[i * 4 + 1] = 2;
-        fb[i * 4 + 2] = 7; fb[i * 4 + 3] = 255;
-    }
+    sr_canvas_reset_clip(&canvas);
+    sr_clear(&canvas, 0x010207u);
     clip_x0 = (int)floorf(origin_x); clip_y0 = (int)floorf(origin_y);
     clip_x1 = (int)ceilf(origin_x + LOGICAL_W * scale_px);
     clip_y1 = (int)ceilf(origin_y + LOGICAL_H * scale_px);
+    sr_canvas_set_clip(&canvas, clip_x0, clip_y0,
+                       clip_x1 - clip_x0, clip_y1 - clip_y0);
     if (G.shake > 0) {
         float strength = G.shake * 3.2f;
         shake_x = sinf(G.ticks * 2.17f) * strength * scale_px;
@@ -605,13 +558,5 @@ void render_frame(void)
 
 bool render_dump_ppm(const char *path)
 {
-    FILE *f = fopen(path, "wb");
-    if (!f) return false;
-    fprintf(f, "P6\n%d %d\n255\n", W, H);
-    for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++)
-            fwrite(fb + ((size_t)y * W + x) * 4, 1, 3, f);
-    bool ok = !ferror(f);
-    if (fclose(f) != 0) ok = false;
-    return ok;
+    return sr_write_ppm(&canvas, path);
 }
