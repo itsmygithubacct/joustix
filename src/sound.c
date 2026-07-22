@@ -1,8 +1,7 @@
 /* Banked PCM sound with a procedural fallback and command-line sink mixer. */
 #include "joustix.h"
-#include "pcm_mixer.h"
+#include "pcmmix_bank.h"
 
-#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,11 +10,7 @@
 #define SAMPLE_RATE 44100
 #define MAX_SFX_VARIANTS 8
 
-typedef struct { int16_t *data; int length; } Sample;
-
-static Sample samples[SFX_COUNT][MAX_SFX_VARIANTS];
-static uint8_t sample_counts[SFX_COUNT];
-static uint8_t last_variants[SFX_COUNT];
+static pcmmix_bank sound_bank;
 static pcmmix mixer;
 static bool mixer_started;
 static bool enabled = true;
@@ -34,16 +29,6 @@ static float noise_sample(void)
     return ((audio_random_u32() >> 8) * (1.0f / 8388608.0f)) - 1.0f;
 }
 
-static void clear_sample_bank(int id)
-{
-    if (id < 0 || id >= SFX_COUNT) return;
-    for (int variant = 0; variant < MAX_SFX_VARIANTS; variant++) {
-        free(samples[id][variant].data);
-        samples[id][variant] = (Sample){0};
-    }
-    sample_counts[id] = 0;
-}
-
 static void bake(int id, float *src, int n, float peak)
 {
     float max_value = 1e-6f;
@@ -57,9 +42,10 @@ static void bake(int id, float *src, int n, float peak)
         if (n - i < 220) fade *= (n - i) / 220.0f;
         out[i] = (int16_t)(clampf(src[i] * gain * fade, -1, 1) * 32767.0f);
     }
-    clear_sample_bank(id);
-    samples[id][0] = (Sample){ out, n };
-    sample_counts[id] = 1;
+    pcmmix_bank_clear_cue(&sound_bank, (uint32_t)id);
+    if (!pcmmix_bank_take(&sound_bank, (uint32_t)id, 0u, out,
+                          (size_t)n, 1.0f, 1.0f))
+        free(out);
 }
 
 static void add_note(float *s, int n, float start, float duration, float frequency,
@@ -322,45 +308,26 @@ static bool variant_filename(const char *base, int variant, char *out, size_t si
 static void load_external_sounds(void)
 {
     for (int id = 0; id < SFX_COUNT; id++) {
-        Sample loaded[MAX_SFX_VARIANTS] = {{0}};
-        int count = 0;
         for (int variant = 0; variant < MAX_SFX_VARIANTS; variant++) {
             char relative[96];
             if (!variant_filename(sfx_files[id], variant, relative, sizeof relative))
                 break;
-            size_t frames = 0;
             char error[192];
-            int16_t *data = pcmmix_wav_load(asset_path(relative), &frames,
-                                             error, sizeof error);
-            if (!data || frames > INT_MAX)
+            if (!pcmmix_bank_load_wav(&sound_bank, (uint32_t)id,
+                                      (uint32_t)variant,
+                                      asset_path(relative), 1.0f, 1.0f,
+                                      error, sizeof error))
                 break;
-            loaded[count++] = (Sample){data, (int)frames};
         }
-        if (count == 0) continue;
-        clear_sample_bank(id);
-        for (int variant = 0; variant < count; variant++)
-            samples[id][variant] = loaded[variant];
-        sample_counts[id] = (uint8_t)count;
     }
-}
-
-static int choose_variant(int id)
-{
-    int count = sample_counts[id];
-    if (count <= 1) return 0;
-    int variant;
-    do variant = (int)(audio_random_u32() % (uint32_t)count);
-    while (variant == last_variants[id]);
-    last_variants[id] = (uint8_t)variant;
-    return variant;
 }
 
 bool sound_init(void)
 {
     pcmmix_options options;
 
+    (void)pcmmix_bank_init(&sound_bank, SFX_COUNT, 0x51a7c0deu);
     synthesize();
-    memset(last_variants, 0xff, sizeof last_variants);
     load_external_sounds();
     pcmmix_options_init(&options);
     options.max_voices = 16;
@@ -375,7 +342,7 @@ void sound_shutdown(void)
 {
     if (mixer_started) pcmmix_stop(&mixer);
     mixer_started = false;
-    for (int i = 0; i < SFX_COUNT; i++) clear_sample_bank(i);
+    pcmmix_bank_clear(&sound_bank);
 }
 
 void sound_set_enabled(bool on)
@@ -387,10 +354,8 @@ bool sound_is_enabled(void) { return enabled; }
 
 void sound_play(int id, float volume, float pitch)
 {
-    if (!enabled || id < 0 || id >= SFX_COUNT || sample_counts[id] == 0 ||
-        !mixer_started) return;
-    Sample *sample = &samples[id][choose_variant(id)];
-    pcmmix_sample clip = {sample->data, (size_t)sample->length};
-    (void)pcmmix_play(&mixer, &clip, clampf(volume, 0, 1),
-                      clampf(pitch, .45f, 2.2f));
+    if (!enabled || id < 0 || id >= SFX_COUNT || !mixer_started) return;
+    (void)pcmmix_bank_play(&mixer, &sound_bank, (uint32_t)id,
+                           clampf(volume, 0, 1),
+                           clampf(pitch, .45f, 2.2f));
 }
