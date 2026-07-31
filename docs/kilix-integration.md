@@ -9,7 +9,8 @@ directory, records the executable in `games.conf`, and opens it in a new tab.
 For a personal checkout, build and install the executable directly:
 
 ```sh
-cd ~/.local/gpu_terminal/sources/joustix
+git clone https://github.com/itsmygithubacct/joustix.git
+cd joustix
 make
 make install PREFIX="$HOME/.local"
 ```
